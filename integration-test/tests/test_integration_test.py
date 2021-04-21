@@ -28,7 +28,9 @@ def test_basic():
             if time.perf_counter() - start_time >= timeout:
                 tm_output = tm_proc.stdout.readlines()
                 tmkms_output = tmkms_proc.stdout.readlines()
-                tmkms_err = tmkms_proc.stderr.readlines()
+                # tmkms_err = tmkms_proc.stderr.readlines()
+                # fixme: it blocks here, just make a test
+                tmkms_err = ""
                 raise TimeoutError('Waited too long for the RPC port. tm: {}, tmkms: {} {}'.format(tm_output, tmkms_output, tmkms_err)) from e
     time.sleep(5)
     contents = urllib.request.urlopen(status_url).read()
