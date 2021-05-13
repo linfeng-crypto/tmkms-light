@@ -1,3 +1,6 @@
+//! Copyright (c) 2019 Tokio Contributors (licensed under the MIT License)
+//! Modifications Copyright (c) 2021, Foris Limited (licensed under the Apache License, Version 2.0)
+
 use nix::sys::socket::SockAddr;
 use std::collections::HashMap;
 use std::{fmt, io::Write};

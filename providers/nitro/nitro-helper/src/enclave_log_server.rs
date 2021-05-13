@@ -1,4 +1,5 @@
 use crate::shared::VSOCK_HOST_CID;
+use chrono::offset::Local;
 use nix::sys::socket::SockAddr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
@@ -102,7 +103,8 @@ impl LogServer {
         }
 
         if let Some(file) = self.log_file.as_mut() {
-            s = format!("{:<6}{}\n", log.level, s);
+            let now = Local::now();
+            s = format!("{} {:<6}{}\n", now.format("%F %T%.3f"), log.level, s);
             file.write_all(s.as_bytes())
                 .map_err(|e| format!("write log to file error: {:?}", e))?;
             let _ = file.flush();
