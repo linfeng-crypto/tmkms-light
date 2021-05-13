@@ -3,6 +3,7 @@ use chrono::offset::Local;
 use nix::sys::socket::SockAddr;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 use tmkms_nitro_helper::tracing_layer::Log;
@@ -21,7 +22,7 @@ pub struct LogServer {
 }
 
 impl LogServer {
-    pub fn new(local_port: u32, to_console: bool, log_file: String) -> std::io::Result<Self> {
+    pub fn new(local_port: u32, to_console: bool, log_file: PathBuf) -> std::io::Result<Self> {
         let file = if !log_file.is_empty() {
             let f = OpenOptions::new()
                 .write(true)
