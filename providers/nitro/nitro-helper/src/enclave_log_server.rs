@@ -23,7 +23,7 @@ pub struct LogServer {
 
 impl LogServer {
     pub fn new(local_port: u32, to_console: bool, log_file: PathBuf) -> std::io::Result<Self> {
-        let file = if !log_file.is_empty() {
+        let file = if log_file.file_name().is_none() {
             let f = OpenOptions::new()
                 .write(true)
                 .append(true)
