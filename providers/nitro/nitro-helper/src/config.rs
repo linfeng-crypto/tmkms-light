@@ -30,7 +30,7 @@ pub struct NitroSignOpt {
     /// Vsock port that the enclave server listen on
     pub enclave_log_port: u32,
     /// the file that put the enclave log, if it's empty, no need to put log to a file
-    pub enclave_log_file: String,
+    pub enclave_log_file: PathBuf,
     /// If true, print the enclave log into console
     pub enclave_log_to_console: bool,
     /// AWS credentials -- if not set, they'll be obtained from IAM
