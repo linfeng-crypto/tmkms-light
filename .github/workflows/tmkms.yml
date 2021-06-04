@@ -2,7 +2,7 @@ name: tmkms
 
 on:
   push:
-    branches: main
+    branches: develop
   pull_request:
     paths:
       - "Cargo.*"

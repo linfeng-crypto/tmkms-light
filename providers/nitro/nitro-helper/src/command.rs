@@ -14,6 +14,25 @@ use tracing::{debug, Level};
 use tracing_subscriber::FmtSubscriber;
 use vsock::SockAddr;
 
+fn get_credentials() -> Result<AwsCredentials, String> {
+    let mut rt = tokio2::runtime::Runtime::new()
+        .map_err(|e| format!("failed to get tokio runtime: {:?}", e))?;
+    let credentials = rt
+        .block_on(async move { InstanceMetadataProvider::new().credentials().await })
+        .map_err(|e| format!("failed to obtain AWS credentials: {:?}", e))?;
+    let session_token = credentials
+        .token()
+        .as_ref()
+        .ok_or_else(|| "failed to get a session token".to_owned())?
+        .to_owned();
+    let result = AwsCredentials {
+        aws_key_id: credentials.aws_access_key_id().to_owned(),
+        aws_secret_key: credentials.aws_secret_access_key().to_owned(),
+        aws_session_token: session_token,
+    };
+    Ok(result)
+}
+
 /// write tmkms.toml + generate keys
 pub fn init(
     config_path: Option<PathBuf>,
@@ -30,6 +49,12 @@ pub fn init(
     let t = toml::to_string_pretty(&config)
         .map_err(|e| format!("failed to create a config in toml: {:?}", e))?;
     fs::write(cp, t).map_err(|e| format!("failed to write a config: {:?}", e))?;
+    // TODO: first use the one in config
+    let credentials = if let Some(credentials) = config.credentials {
+        credentials
+    } else {
+        get_credentials()?
+    };
     fs::create_dir_all(
         config
             .sealed_consensus_key_path
@@ -47,12 +72,13 @@ pub fn init(
     let pubkey = generate_key(
         config.sealed_consensus_key_path,
         &config.aws_region,
+        credentials.clone(),
         kms_key_id.clone(),
     )
     .map_err(|e| format!("failed to generate a key: {:?}", e))?;
     print_pubkey(bech32_prefix, pubkey_display, pubkey);
     if let Some(id_path) = config.sealed_id_key_path {
-        generate_key(id_path, &config.aws_region, kms_key_id)
+        generate_key(id_path, &config.aws_region, credentials, kms_key_id)
             .map_err(|e| format!("failed to generate a key: {:?}", e))?;
     }
     Ok(())
@@ -87,20 +113,7 @@ pub fn start(config_path: Option<PathBuf>, cid: Option<u32>) -> Result<(), Strin
         let credentials = if let Some(credentials) = config.credentials {
             credentials
         } else {
-            let mut rt = tokio::runtime::Runtime::new()
-                .map_err(|e| format!("failed to get tokio runtime: {:?}", e))?;
-            let credentials = rt
-                .block_on(async move { InstanceMetadataProvider::new().credentials().await })
-                .map_err(|e| format!("failed to obtain AWS credentials: {:?}", e))?;
-            AwsCredentials {
-                aws_key_id: credentials.aws_access_key_id().to_owned(),
-                aws_secret_key: credentials.aws_secret_access_key().to_owned(),
-                aws_session_token: credentials
-                    .token()
-                    .as_ref()
-                    .ok_or_else(|| "failed to get a session token".to_owned())?
-                    .to_owned(),
-            }
+            get_credentials()?
         };
         let peer_id = match &config.address {
             net::Address::Tcp { peer_id, .. } => *peer_id,

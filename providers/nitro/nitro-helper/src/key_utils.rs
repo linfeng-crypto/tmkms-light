@@ -1,45 +1,46 @@
-use bytes::Bytes;
+use crate::shared::AwsCredentials;
+use aws_sdk_kms::config::Config;
+use aws_sdk_kms::Credentials as KmsCredentials;
+use aws_sdk_kms::{Client as KmsClient, Region};
 use ed25519_dalek::{Keypair, PublicKey};
 use rand_core::OsRng;
-use rusoto_core::{region::Region, HttpClient};
-use rusoto_credential::InstanceMetadataProvider;
-use rusoto_kms::{EncryptRequest, Kms, KmsClient};
-use std::str::FromStr;
 use std::{fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
+use tokio::runtime::Runtime;
 
 /// Generates key and encrypts with AWS KMS at the given path
 /// TODO: generate in NE after this is merged https://github.com/aws/aws-nitro-enclaves-sdk-c/pull/25
 pub fn generate_key(
     path: impl AsRef<Path>,
     region: &str,
-    key_id: String,
+    credentials: AwsCredentials,
+    kms_key_id: String,
 ) -> Result<PublicKey, String> {
-    let region = Region::from_str(region).map_err(|e| format!("invalid region: {}", e))?;
+    let credientials = KmsCredentials::from_keys(
+        &credentials.aws_key_id,
+        &credentials.aws_secret_key,
+        Some(credentials.aws_session_token.clone()),
+    );
     let mut csprng = OsRng {};
     let keypair: Keypair = Keypair::generate(&mut csprng);
     let public = keypair.public;
-    let mut rt = tokio::runtime::Runtime::new()
-        .map_err(|err| format!("Failed to init tokio runtime: {}", err))?;
-    let ciphertext = rt
-        .block_on(async move {
-            let provider = InstanceMetadataProvider::new();
-            let dispatcher = HttpClient::new()
-                .map_err(|e| format!("failed to create request dispatcher {}", e))?;
-            let client = KmsClient::new_with(dispatcher, provider, region);
-            client
-                .encrypt(EncryptRequest {
-                    encryption_context: None,
-                    grant_tokens: None,
-                    encryption_algorithm: None,
-                    key_id,
-                    plaintext: Bytes::copy_from_slice(keypair.secret.as_bytes()),
-                })
-                .await
-                .map_err(|err| format!("Failed to obtain ciphertext from instance: {}", err))
-        })?
-        .ciphertext_blob
-        .ok_or_else(|| "failed to obtain ciphertext blob".to_owned())?;
+    let privkey_blob = smithy_types::Blob::new(keypair.secret.as_bytes().to_vec());
+    let kms_config = Config::builder()
+        .region(Region::new(region.to_string()))
+        .credentials_provider(credientials)
+        .build();
 
+    let client = KmsClient::from_conf(kms_config);
+    let generator = client
+        .encrypt()
+        .set_plaintext(Some(privkey_blob))
+        .set_key_id(Some(kms_key_id));
+
+    let rt = Runtime::new().map_err(|err| format!("Failed to init tokio runtime: {}", err))?;
+    let output = rt
+        .block_on(generator.send())
+        .map_err(|e| format!("send to mks to encrypt error: {:?}", e))?;
+    // TODO: remove unwrap
+    let ciphertext = output.ciphertext_blob.unwrap().into_inner();
     OpenOptions::new()
         .create(true)
         .write(true)
