@@ -52,7 +52,7 @@ pub(crate) mod credential {
             .unwrap();
         Ok(AwsCredentials {
             aws_key_id: credential.key.clone(),
-            aws_secret_key: credential.secret.into(),
+            aws_secret_key: credential.secret.clone(),
             aws_session_token: credential.token.unwrap_or_default(),
         })
     }
