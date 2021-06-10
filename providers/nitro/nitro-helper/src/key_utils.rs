@@ -7,6 +7,57 @@ use rand_core::OsRng;
 use std::{fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 use tokio::runtime::Runtime;
 
+// TODO: use aws-rust-sdk after the issue fixed
+// https://github.com/awslabs/aws-sdk-rust/issues/97
+pub(crate) mod credential {
+    use crate::shared::AwsCredentials;
+    use chrono::{DateTime, Utc};
+    use serde::Deserialize;
+    use std::collections::BTreeMap;
+
+    const AWS_CREDENTIALS_PROVIDER_IP: &str = "169.254.169.254";
+    const AWS_CREDENTIALS_PROVIDER_PATH: &str = "latest/meta-data/iam/security-credentials";
+
+    #[derive(Clone, Debug, Deserialize, Default)]
+    pub struct AwsCredentialsResponse {
+        #[serde(rename = "AccessKeyId")]
+        key: String,
+        #[serde(rename = "SecretAccessKey")]
+        secret: String,
+        #[serde(rename = "SessionToken", alias = "Token")]
+        token: Option<String>,
+        #[serde(rename = "Expiration")]
+        expires_at: Option<DateTime<Utc>>,
+        #[serde(skip)]
+        claims: BTreeMap<String, String>,
+    }
+
+    /// Gets the role name to get credentials for using the IAM Metadata Service (169.254.169.254).
+    pub fn get_credentials() -> Result<AwsCredentials, String> {
+        let role_name_address = format!(
+            "http://{}/{}/",
+            AWS_CREDENTIALS_PROVIDER_IP, AWS_CREDENTIALS_PROVIDER_PATH
+        );
+        let role_name = reqwest::blocking::get(role_name_address)
+            .unwrap()
+            .text()
+            .unwrap();
+        let credentials_provider_url = format!(
+            "http://{}/{}/{}",
+            AWS_CREDENTIALS_PROVIDER_IP, AWS_CREDENTIALS_PROVIDER_PATH, role_name
+        );
+        let credential: AwsCredentialsResponse = reqwest::blocking::get(credentials_provider_url)
+            .unwrap()
+            .json()
+            .unwrap();
+        Ok(AwsCredentials {
+            aws_key_id: credential.key.clone(),
+            aws_secret_key: credential.secret.into(),
+            aws_session_token: credential.token.unwrap_or_default(),
+        })
+    }
+}
+
 /// Generates key and encrypts with AWS KMS at the given path
 /// TODO: generate in NE after this is merged https://github.com/aws/aws-nitro-enclaves-sdk-c/pull/25
 pub fn generate_key(
