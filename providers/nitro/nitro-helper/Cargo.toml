@@ -6,14 +6,17 @@ edition = "2018"
 
 [features]
 default = ["main"]
-main = ["sysinfo", "reqwest"]
+main = ["sysinfo", "reqwest", "nitro-cli", "vsock-proxy"]
 
 [dependencies]
 anomaly = "0.2"
 bytes = "= 0.5"
+ctrlc = "3.1"
 chrono = "0.4"
+crossbeam-channel = "0.5"
 ed25519 = { version = "1", features = [ "serde" ] }
 ed25519-dalek = "1"
+nitro-cli = {git = "https://github.com/aws/aws-nitro-enclaves-cli.git", tag = "v1.0.10", optional = true }
 nix = "0.21"
 rand_core = { version = "0.6", features = [ "std" ] }
 reqwest = { version = "0.11", features = ["blocking", "json"], optional = true}
@@ -33,3 +36,4 @@ tracing = "0.1"
 tracing-subscriber = "0.2"
 tracing-core = "0.1"
 vsock = "0.2"
+vsock-proxy = {git = "https://github.com/aws/aws-nitro-enclaves-cli.git", tag = "v1.0.10", optional = true }

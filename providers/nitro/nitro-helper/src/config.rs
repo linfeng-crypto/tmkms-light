@@ -1,10 +1,13 @@
 use crate::shared::AwsCredentials;
+use nitro_cli::common::commands_parser::RunEnclavesArgs;
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::{convert::TryFrom, path::PathBuf};
+use structopt::StructOpt;
 use tendermint::{chain, net};
 
 /// nitro options for toml configuration
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NitroSignOpt {
     /// Address of the validator (`tcp://` or `unix://`)
@@ -27,16 +30,101 @@ pub struct NitroSignOpt {
     pub enclave_state_port: u32,
     /// Vsock port to forward privval plain traffic to TM over UDS (or just pass to enclave if TCP/secret connection)
     pub enclave_tendermint_conn: u32,
-    /// Vsock port that the enclave server listen on
-    pub enclave_log_port: u32,
-    /// the file that put the enclave log, if it's empty, no need to put log to a file
-    pub enclave_log_file: PathBuf,
-    /// If true, print the enclave log into console
-    pub enclave_log_to_console: bool,
     /// AWS credentials -- if not set, they'll be obtained from IAM
     pub credentials: Option<AwsCredentials>,
     /// AWS region
     pub aws_region: String,
+}
+
+#[derive(StructOpt, Clone, Serialize, Deserialize, Debug)]
+pub struct VSockProxyOpt {
+    /// "Set the maximum number of simultaneous connections supported."
+    #[structopt(long, short = "w", default_value = "4")]
+    pub num_workers: usize,
+    /// "Local vsock port to listen for incoming connections."
+    #[structopt(long, default_value = "8000")]
+    pub local_port: u32,
+    /// "Remote TCP port of the server to be proxyed."
+    #[structopt(long, default_value = "443")]
+    pub remote_port: u16,
+    /// "Address of the server to be proxyed."
+    #[structopt(long)]
+    pub remote_addr: String,
+    /// "YAML file containing the services that can be forwarded.\n"
+    #[structopt(long, default_value = "/etc/nitro_enclaves/vsock-proxy.yaml")]
+    pub config_file: String,
+}
+
+impl Default for VSockProxyOpt {
+    fn default() -> Self {
+        Self {
+            num_workers: 4,
+            local_port: 8000,
+            remote_port: 443,
+            remote_addr: "kms.ap-southeast-1.amazonaws.com".to_string(),
+            config_file: "/etc/nitro_enclaves/vsock-proxy.yaml".to_string(),
+        }
+    }
+}
+
+#[derive(StructOpt, Clone, Serialize, Deserialize, Debug)]
+pub struct EnclaveOpt {
+    /// The path to the enclave image file
+    #[structopt(long, short = "p", default_value = "/home/ec2-user/.tmkms/tmkms.eif")]
+    pub eif_path: String,
+    /// The optional enclave CID
+    #[structopt(long, short = "i")]
+    pub enclave_cid: Option<u64>,
+    /// The amount of memory that will be given to the enclave.
+    #[structopt(long, default_value = "512")]
+    pub memory_mib: u64,
+    /// The number of CPUs that the enclave will receive.
+    #[structopt(long, conflicts_with("cpu_ids"))]
+    pub cpu_count: Option<u32>,
+    /// An optional list of CPU IDs that will be given to the enclave.
+    #[structopt(long, conflicts_with("cpu_count"))]
+    pub cpu_ids: Option<Vec<u32>>,
+    /// A flag indicating if the enclave will be started in debug mode.
+    #[structopt(long, short = "d")]
+    pub debug_mode: bool,
+    /// Set the enclave log server port
+    #[structopt(long, default_value = "6050")]
+    pub log_server_port: u32,
+    /// Set the enclave log file
+    #[structopt(long)]
+    pub log_file: Option<PathBuf>,
+    /// output the enclave to console
+    #[structopt(long, short = "l")]
+    pub log_to_console: bool,
+}
+
+impl Default for EnclaveOpt {
+    fn default() -> Self {
+        Self {
+            eif_path: "tmkms.eif".to_string(),
+            enclave_cid: None,
+            memory_mib: 512,
+            cpu_count: Some(4),
+            cpu_ids: None,
+            debug_mode: false,
+            log_server_port: 6050,
+            log_file: None,
+            log_to_console: true,
+        }
+    }
+}
+
+impl EnclaveOpt {
+    pub fn get_run_enclave_args(&self) -> RunEnclavesArgs {
+        RunEnclavesArgs {
+            eif_path: self.eif_path.clone(),
+            enclave_cid: self.enclave_cid,
+            memory_mib: self.memory_mib,
+            cpu_ids: self.cpu_ids.clone(),
+            debug_mode: Some(self.debug_mode),
+            cpu_count: self.cpu_count,
+        }
+    }
 }
 
 impl Default for NitroSignOpt {
@@ -54,11 +142,26 @@ impl Default for NitroSignOpt {
             enclave_config_port: 5050,
             enclave_state_port: 5555,
             enclave_tendermint_conn: 5000,
-            enclave_log_port: 6050,
-            enclave_log_file: "".into(),
-            enclave_log_to_console: true,
             credentials: None,
             aws_region: "ap-southeast-1".to_owned(),
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, Debug)]
+pub struct Config {
+    pub sign_opt: NitroSignOpt,
+    pub vsock_proxy: VSockProxyOpt,
+    pub enclave: EnclaveOpt,
+}
+
+impl Config {
+    pub fn from_file(config_path: PathBuf) -> Result<Self, String> {
+        if !config_path.exists() {
+            return Err("config path is not exists".to_string());
+        }
+        let toml_string = fs::read_to_string(config_path).expect("toml config file read");
+        toml::from_str(&toml_string)
+            .map_err(|e| format!("toml config file failed to parse: {:?}", e))
     }
 }
