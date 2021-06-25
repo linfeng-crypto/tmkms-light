@@ -1,23 +1,19 @@
-use crate::command::enclave::{get_enclave_info, run_enclave};
 use crate::command::helper::start;
-use crate::command::vsock_proxy::run_vsock_proxy;
+use crate::command::nitro_enclave::run_vsock_proxy;
+use crate::command::nitro_enclave::{describe_enclave, run_enclave};
 use crate::config::Config;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use std::thread::{self, sleep};
 use std::time::Duration;
-use tracing::Level;
-use tracing_subscriber::FmtSubscriber;
 
 pub struct Launcher {
-    log_level: Level,
     config: Config,
     stop_enclave_sender: Sender<()>,
 }
 
 impl Launcher {
-    pub fn new(log_level: Level, config: Config, stop_enclave_sender: Sender<()>) -> Self {
+    pub fn new(config: Config, stop_enclave_sender: Sender<()>) -> Self {
         Self {
-            log_level,
             config,
             stop_enclave_sender,
         }
@@ -27,15 +23,10 @@ impl Launcher {
     /// 2. launch proxy
     /// 3. start helper
     pub fn run(&self, receiver: Receiver<()>) -> Result<(), String> {
-        let subscriber = FmtSubscriber::builder()
-            .with_max_level(self.log_level)
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)
-            .map_err(|e| format!("setting default subscriber failed: {:?}", e))?;
-
         // start enclave
         let enclave_config = self.config.enclave.clone();
         let t1 = thread::spawn(move || {
+            tracing::info!("starting enclave ...");
             if let Err(e) = run_enclave(&enclave_config, receiver) {
                 tracing::error!("enclave error: {:?}", e);
                 std::process::exit(1)
@@ -46,6 +37,7 @@ impl Launcher {
         let proxy_config = self.config.vsock_proxy.clone();
         let sender = self.stop_enclave_sender.clone();
         let _t2 = thread::spawn(move || {
+            tracing::info!("starting vsock proxy");
             if let Err(e) = run_vsock_proxy(&proxy_config) {
                 tracing::error!("vsock proxy error: {:?}", e);
                 let _ = sender.send(());
@@ -55,9 +47,9 @@ impl Launcher {
 
         // run helper
         // get cid
-        tracing::info!("start helper...");
+        tracing::info!("starting helper...");
         sleep(Duration::from_secs(5));
-        let enclave_info = get_enclave_info()?;
+        let enclave_info = describe_enclave()?;
         if enclave_info.is_empty() {
             tracing::error!("can't find running enclave");
             let _ = self.stop_enclave_sender.send(());
@@ -93,10 +85,10 @@ impl Drop for Launcher {
     }
 }
 
-pub fn launch_all(log_level: Level, config: Config) -> Result<(), String> {
+pub fn launch_all(config: Config) -> Result<(), String> {
     // run enclave
     let (sender, receiver) = bounded(1);
-    let launcher = Launcher::new(log_level, config, sender);
+    let launcher = Launcher::new(config, sender);
     launcher.run(receiver)?;
     Ok(())
 }

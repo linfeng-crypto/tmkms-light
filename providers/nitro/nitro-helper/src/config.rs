@@ -1,5 +1,4 @@
 use crate::shared::AwsCredentials;
-use nitro_cli::common::commands_parser::RunEnclavesArgs;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::{convert::TryFrom, path::PathBuf};
@@ -80,13 +79,7 @@ pub struct EnclaveOpt {
     pub memory_mib: u64,
     /// The number of CPUs that the enclave will receive.
     #[structopt(long, conflicts_with("cpu_ids"))]
-    pub cpu_count: Option<u32>,
-    /// An optional list of CPU IDs that will be given to the enclave.
-    #[structopt(long, conflicts_with("cpu_count"))]
-    pub cpu_ids: Option<Vec<u32>>,
-    /// A flag indicating if the enclave will be started in debug mode.
-    #[structopt(long, short = "d")]
-    pub debug_mode: bool,
+    pub cpu_count: usize,
     /// Set the enclave log server port
     #[structopt(long, default_value = "6050")]
     pub log_server_port: u32,
@@ -104,25 +97,10 @@ impl Default for EnclaveOpt {
             eif_path: "tmkms.eif".to_string(),
             enclave_cid: None,
             memory_mib: 512,
-            cpu_count: Some(4),
-            cpu_ids: None,
-            debug_mode: false,
+            cpu_count: 2,
             log_server_port: 6050,
             log_file: None,
             log_to_console: true,
-        }
-    }
-}
-
-impl EnclaveOpt {
-    pub fn get_run_enclave_args(&self) -> RunEnclavesArgs {
-        RunEnclavesArgs {
-            eif_path: self.eif_path.clone(),
-            enclave_cid: self.enclave_cid,
-            memory_mib: self.memory_mib,
-            cpu_ids: self.cpu_ids.clone(),
-            debug_mode: Some(self.debug_mode),
-            cpu_count: self.cpu_count,
         }
     }
 }

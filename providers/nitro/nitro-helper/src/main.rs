@@ -6,12 +6,12 @@ mod proxy;
 mod shared;
 mod state;
 
-use command::enclave::{get_enclave_info, run_enclave, stop_enclave};
 use command::helper::{self, check_vsock_proxy};
 use command::launch_all::launch_all;
-use command::vsock_proxy::run_vsock_proxy;
+use command::nitro_enclave::{describe_enclave, run_enclave, stop_enclave};
 use config::{Config, EnclaveOpt, VSockProxyOpt};
 
+use crate::command::nitro_enclave::run_vsock_proxy;
 use crossbeam_channel::bounded;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -49,14 +49,14 @@ enum CommandEnclave {
         /// Stop the enclave cid
         #[structopt(long)]
         cid: Option<String>,
-        /// Stop all enclave
-        #[structopt(long)]
-        all: bool,
     },
     #[structopt(name = "vsock-proxy", about = "launch vsock proxy")]
     RunProxy {
         #[structopt(flatten)]
         opt: VSockProxyOpt,
+        /// log level, default: info, -v: info, -vv: debug, -vvv: trace
+        #[structopt(short, parse(from_occurrences))]
+        v: u32,
     },
 }
 
@@ -103,13 +103,16 @@ enum CommandHelper {
     },
 }
 
-#[inline]
-fn get_log_level(v: u32) -> Level {
-    match v {
+fn set_logger(v: u32) -> Result<(), String> {
+    let log_level = match v {
         0 | 1 => Level::INFO,
         2 => Level::DEBUG,
         _ => Level::TRACE,
-    }
+    };
+    let subscriber = FmtSubscriber::builder().with_max_level(log_level).finish();
+    tracing::subscriber::set_global_default(subscriber)
+        .map_err(|e| format!("setting default subscriber failed: {:?}", e))?;
+    Ok(())
 }
 
 fn run() -> Result<(), String> {
@@ -137,10 +140,7 @@ fn run() -> Result<(), String> {
             cid,
             v,
         }) => {
-            let log_level = get_log_level(v);
-            let subscriber = FmtSubscriber::builder().with_max_level(log_level).finish();
-            tracing::subscriber::set_global_default(subscriber)
-                .map_err(|e| format!("setting default subscriber failed: {:?}", e))?;
+            set_logger(v)?;
             let config = Config::from_file(config_path)?;
             if !check_vsock_proxy() {
                 return Err("vsock proxy not started".to_string());
@@ -148,16 +148,13 @@ fn run() -> Result<(), String> {
             helper::start(&config.sign_opt, cid)?;
         }
         TmkmsLight::Enclave(CommandEnclave::Info) => {
-            let info = get_enclave_info()?;
+            let info = describe_enclave()?;
             let s = serde_json::to_string_pretty(&info)
                 .map_err(|_| "get invalid enclave info".to_string())?;
             println!("enclave status:\n{}", s);
         }
         TmkmsLight::Enclave(CommandEnclave::RunEnclave { opt, v }) => {
-            let log_level = get_log_level(v);
-            let subscriber = FmtSubscriber::builder().with_max_level(log_level).finish();
-            tracing::subscriber::set_global_default(subscriber)
-                .map_err(|e| format!("setting default subscriber failed: {:?}", e))?;
+            set_logger(v)?;
             let (sender, receiver) = bounded(1);
             ctrlc::set_handler(move || {
                 let _ = sender.send(());
@@ -165,17 +162,17 @@ fn run() -> Result<(), String> {
             .map_err(|_| "Error to set Ctrl-C channel".to_string())?;
             run_enclave(&opt, receiver)?;
         }
-        TmkmsLight::Enclave(CommandEnclave::StopEnclave { cid, all }) => {
-            let enclave_id = if all { None } else { cid };
-            stop_enclave(enclave_id)?;
+        TmkmsLight::Enclave(CommandEnclave::StopEnclave { cid }) => {
+            stop_enclave(cid)?;
         }
-        TmkmsLight::Enclave(CommandEnclave::RunProxy { opt }) => {
+        TmkmsLight::Enclave(CommandEnclave::RunProxy { opt, v }) => {
+            set_logger(v)?;
             run_vsock_proxy(&opt)?;
         }
         TmkmsLight::Helper(CommandHelper::LaunchAll { config_path, v }) => {
-            let log_level = get_log_level(v);
+            set_logger(v)?;
             let config = Config::from_file(config_path)?;
-            launch_all(log_level, config)?;
+            launch_all(config)?;
         }
     };
     Ok(())
