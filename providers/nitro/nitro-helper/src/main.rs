@@ -6,7 +6,7 @@ mod proxy;
 mod shared;
 mod state;
 
-use command::helper::{self, check_vsock_proxy};
+use command::{check_vsock_proxy, init, start};
 use command::launch_all::launch_all;
 use command::nitro_enclave::{describe_enclave, run_enclave, stop_enclave};
 use config::{Config, EnclaveOpt, VSockProxyOpt};
@@ -126,7 +126,7 @@ fn run() -> Result<(), String> {
             kms_key_id,
             cid,
         }) => {
-            helper::init(
+            init(
                 config_path,
                 pubkey_display,
                 bech32_prefix,
@@ -145,7 +145,7 @@ fn run() -> Result<(), String> {
             if !check_vsock_proxy() {
                 return Err("vsock proxy not started".to_string());
             }
-            helper::start(&config.sign_opt, cid)?;
+            start(&config.sign_opt, cid)?;
         }
         TmkmsLight::Enclave(CommandEnclave::Info) => {
             let info = describe_enclave()?;

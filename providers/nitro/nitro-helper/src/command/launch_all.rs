@@ -1,4 +1,4 @@
-use crate::command::helper::start;
+use crate::command::start;
 use crate::command::nitro_enclave::run_vsock_proxy;
 use crate::command::nitro_enclave::{describe_enclave, run_enclave};
 use crate::config::Config;
