@@ -1,6 +1,7 @@
 // Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // Modifications Copyright (c) 2021, Foris Limited (licensed under the Apache License, Version 2.0)
 
+use crate::command::check_vsock_proxy;
 use crate::config::{EnclaveOpt, VSockProxyOpt};
 use crate::enclave_log_server::LogServer;
 use crossbeam_channel::Receiver;
@@ -152,6 +153,10 @@ pub fn describe_enclave() -> Result<Vec<EnclaveDescribeInfo>, String> {
 
 pub fn run_vsock_proxy(opt: &VSockProxyOpt) -> Result<(), String> {
     tracing::debug!("run vsock proxy with config: {:?}", opt);
+    if check_vsock_proxy() {
+        log::warn!("vsock proxy is already running, ignore this start");
+        return Ok(());
+    }
     let _ = Command::new("vsock-proxy")
         .args(&["--num_workers", &format!("{}", opt.num_workers)])
         .args(&["--config", &opt.config_file])
