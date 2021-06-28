@@ -1,6 +1,6 @@
-use crate::command::start;
 use crate::command::nitro_enclave::run_vsock_proxy;
 use crate::command::nitro_enclave::{describe_enclave, run_enclave};
+use crate::command::start;
 use crate::config::Config;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use std::thread::{self, sleep};
@@ -12,6 +12,8 @@ pub struct Launcher {
 }
 
 impl Launcher {
+    /// create a new launcher, stop_enclave_sender: before the launcher exit, send the signal to
+    /// the subprocess so that it can stop gracefully.
     pub fn new(config: Config, stop_enclave_sender: Sender<()>) -> Self {
         Self {
             config,

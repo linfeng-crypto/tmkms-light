@@ -6,12 +6,13 @@ mod proxy;
 mod shared;
 mod state;
 
-use command::{check_vsock_proxy, init, start};
 use command::launch_all::launch_all;
 use command::nitro_enclave::{describe_enclave, run_enclave, stop_enclave};
+use command::{check_vsock_proxy, init, start};
 use config::{Config, EnclaveOpt, VSockProxyOpt};
 
 use crate::command::nitro_enclave::run_vsock_proxy;
+use crate::config::NitroSignOpt;
 use crossbeam_channel::bounded;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -94,7 +95,7 @@ enum CommandHelper {
     #[structopt(name = "launch-all", about = "launch all")]
     LaunchAll {
         /// config path
-        #[structopt(short, default_value = "tmkms.toml")]
+        #[structopt(short, default_value = "tmkms.launch_all.toml")]
         config_path: PathBuf,
         #[structopt(short, parse(from_occurrences))]
         /// log level, default: info, -v: info, -vv: debug, -vvv: trace
@@ -141,11 +142,14 @@ fn run() -> Result<(), String> {
             v,
         }) => {
             set_logger(v)?;
-            let config = Config::from_file(config_path)?;
+            let toml_string = std::fs::read_to_string(config_path)
+                .map_err(|e| format!("toml config file failed to read: {:?}", e))?;
+            let config: NitroSignOpt = toml::from_str(&toml_string)
+                .map_err(|e| format!("toml config file failed to parse: {:?}", e))?;
             if !check_vsock_proxy() {
                 return Err("vsock proxy not started".to_string());
             }
-            start(&config.sign_opt, cid)?;
+            start(&config, cid)?;
         }
         TmkmsLight::Enclave(CommandEnclave::Info) => {
             let info = describe_enclave()?;
