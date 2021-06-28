@@ -88,12 +88,17 @@ fn run_enclave_daemon(
     image_path: &str,
     cpu_count: usize,
     memory_mib: u64,
+    cid: Option<u64>,
 ) -> Result<EnclaveRunInfo, String> {
-    let output = Command::new("nitro-cli")
-        .arg("run-enclave")
+    let mut cmd = Command::new("nitro-cli");
+    cmd.arg("run-enclave")
         .args(&["--eif-path", image_path])
         .args(&["--cpu-count", &format!("{}", cpu_count)])
-        .args(&["--memory", &format!("{}", memory_mib)])
+        .args(&["--memory", &format!("{}", memory_mib)]);
+    if let Some(cid) = cid {
+        cmd.args(&["--cid", &cid.to_string()]);
+    }
+    let output = cmd
         .output()
         .map_err(|e| format!("execute nitro-cli error: {}", e))?;
     parse_output(output)
@@ -123,7 +128,12 @@ pub fn run_enclave(opt: &EnclaveOpt, stop_receiver: Receiver<()>) -> Result<(), 
 
     enclave_log_server.launch();
     // run enclave
-    let info = run_enclave_daemon(&opt.eif_path, opt.cpu_count, opt.memory_mib)?;
+    let info = run_enclave_daemon(
+        &opt.eif_path,
+        opt.cpu_count,
+        opt.memory_mib,
+        opt.enclave_cid,
+    )?;
     let s = serde_json::to_string_pretty(&info).unwrap();
     tracing::info!("run enclave success:\n{}", s);
     // waiting for stop signal and stop the enclave

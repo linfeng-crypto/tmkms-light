@@ -172,7 +172,8 @@ pub fn start(config: &NitroSignOpt, cid: Option<u32>) -> Result<(), String> {
         net::Address::Unix { path } => {
             tracing::debug!(
                 "{}: Creating a proxy {}...",
-                &config.chain_id, &config.address
+                &config.chain_id,
+                &config.address
             );
 
             Some(Proxy::new(config.enclave_tendermint_conn, path.clone()))
