@@ -67,8 +67,8 @@ enum CommandHelper {
     #[structopt(name = "init", about = "Create config + keygen")]
     /// Create config + keygen
     Init {
-        #[structopt(short)]
-        config_path: Option<PathBuf>,
+        #[structopt(short, default_value = "tmkms.toml")]
+        config_path: PathBuf,
         #[structopt(short)]
         pubkey_display: Option<PubkeyDisplay>,
         #[structopt(short)]

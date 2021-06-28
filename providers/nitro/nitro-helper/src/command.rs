@@ -17,20 +17,19 @@ use crate::state::StateSyncer;
 
 /// write tmkms.toml + tmkms.launch_all.toml + generate keys
 pub fn init(
-    config_path: Option<PathBuf>,
+    config_path: PathBuf,
     pubkey_display: Option<PubkeyDisplay>,
     bech32_prefix: Option<String>,
     aws_region: String,
     kms_key_id: String,
     cid: Option<u32>,
 ) -> Result<(), String> {
-    let cp = config_path.unwrap_or_else(|| "tmkms.toml".into());
-    let file_stem = cp
+    let file_stem = config_path
         .file_stem()
         .map(|s| s.to_str().unwrap_or("tmkms"))
         .unwrap_or_else(|| "tmkms");
     let file_name_launch_all = format!("{}.launch_all.toml", file_stem);
-    let cp_launch_all = cp.with_file_name(file_name_launch_all);
+    let cp_launch_all = config_path.with_file_name(file_name_launch_all);
 
     let nitro_sign_opt = NitroSignOpt {
         aws_region: aws_region.clone(),
@@ -50,7 +49,7 @@ pub fn init(
         .map_err(|e| format!("failed to create a config in toml: {:?}", e))?;
     let t_launch_all = toml::to_string(&all_config)
         .map_err(|e| format!("failed to create a config in toml: {:?}", e))?;
-    fs::write(cp, t).map_err(|e| format!("failed to write a config: {:?}", e))?;
+    fs::write(config_path, t).map_err(|e| format!("failed to write a config: {:?}", e))?;
     fs::write(cp_launch_all, t_launch_all)
         .map_err(|e| format!("failed to write a luanch all config: {:?}", e))?;
     let config = all_config.sign_opt;
