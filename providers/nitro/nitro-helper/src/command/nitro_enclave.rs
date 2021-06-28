@@ -99,6 +99,9 @@ fn run_enclave_daemon(
     parse_output(output)
 }
 
+/// start the enclave
+/// opt: the config to start enclave
+/// stop_receiver: when receiver data, the enclave will be stopped
 pub fn run_enclave(opt: &EnclaveOpt, stop_receiver: Receiver<()>) -> Result<(), String> {
     // check if the enclave already running
     let enclave_info = describe_enclave()?;
@@ -129,6 +132,7 @@ pub fn run_enclave(opt: &EnclaveOpt, stop_receiver: Receiver<()>) -> Result<(), 
     Ok(())
 }
 
+/// stop enclave: if cid is None, stop all enclave
 pub fn stop_enclave(cid: Option<String>) -> Result<EnclaveTerminateInfo, String> {
     let mut cmd = Command::new("nitro-cli");
     cmd.arg("terminate-enclave");
@@ -143,6 +147,7 @@ pub fn stop_enclave(cid: Option<String>) -> Result<EnclaveTerminateInfo, String>
     parse_output(output)
 }
 
+/// get all the enclave info
 pub fn describe_enclave() -> Result<Vec<EnclaveDescribeInfo>, String> {
     let output = Command::new("nitro-cli")
         .arg("describe-enclaves")
@@ -151,19 +156,28 @@ pub fn describe_enclave() -> Result<Vec<EnclaveDescribeInfo>, String> {
     parse_output(output)
 }
 
-pub fn run_vsock_proxy(opt: &VSockProxyOpt) -> Result<(), String> {
+/// start vsock proxy
+/// opt: the config to start the proxy
+/// stop_receiver: when receive a data, the vsock proxy will exit
+pub fn run_vsock_proxy(opt: &VSockProxyOpt, stop_receiver: Receiver<()>) -> Result<(), String> {
     tracing::debug!("run vsock proxy with config: {:?}", opt);
     if check_vsock_proxy() {
-        log::warn!("vsock proxy is already running, ignore this start");
+        tracing::warn!("vsock proxy is already running, ignore this start");
         return Ok(());
     }
-    let _ = Command::new("vsock-proxy")
+    let mut child = Command::new("vsock-proxy")
         .args(&["--num_workers", &format!("{}", opt.num_workers)])
         .args(&["--config", &opt.config_file])
         .arg(opt.local_port.to_string())
         .arg(&opt.remote_addr)
         .arg(opt.remote_port.to_string())
-        .output()
-        .map_err(|e| format!("execute nitro-cli error: {:?}", e))?;
+        .spawn()
+        .map_err(|e| format!("spawn vsock proxy error: {:?}", e))?;
+
+    // waiting for the stop signal
+    let _ = stop_receiver.recv();
+    if child.kill().is_ok() {
+        tracing::info!("vsock proxy stopped");
+    }
     Ok(())
 }

@@ -171,7 +171,12 @@ fn run() -> Result<(), String> {
         }
         TmkmsLight::Enclave(CommandEnclave::RunProxy { opt, v }) => {
             set_logger(v)?;
-            run_vsock_proxy(&opt)?;
+            let (sender, receiver) = bounded(1);
+            ctrlc::set_handler(move || {
+                let _ = sender.send(());
+            })
+            .map_err(|_| "Error to set Ctrl-C channel".to_string())?;
+            run_vsock_proxy(&opt, receiver)?;
         }
         TmkmsLight::Helper(CommandHelper::LaunchAll { config_path, v }) => {
             set_logger(v)?;

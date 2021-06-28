@@ -6,7 +6,6 @@ use sysinfo::{ProcessExt, SystemExt};
 use tendermint::net;
 use tmkms_light::utils::write_u16_payload;
 use tmkms_light::utils::{print_pubkey, PubkeyDisplay};
-use tracing::debug;
 use vsock::SockAddr;
 
 use crate::config::{Config, EnclaveOpt, NitroSignOpt, VSockProxyOpt};
@@ -27,7 +26,7 @@ pub fn init(
     let file_stem = config_path
         .file_stem()
         .map(|s| s.to_str().unwrap_or("tmkms"))
-        .unwrap_or_else(|| "tmkms");
+        .unwrap_or("tmkms");
     let file_name_launch_all = format!("{}.launch_all.toml", file_stem);
     let cp_launch_all = config_path.with_file_name(file_name_launch_all);
 
@@ -171,7 +170,7 @@ pub fn start(config: &NitroSignOpt, cid: Option<u32>) -> Result<(), String> {
         .map_err(|e| format!("failed to write the config: {:?}", e))?;
     let proxy = match &config.address {
         net::Address::Unix { path } => {
-            debug!(
+            tracing::debug!(
                 "{}: Creating a proxy {}...",
                 &config.chain_id, &config.address
             );
