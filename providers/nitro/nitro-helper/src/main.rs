@@ -13,8 +13,8 @@ use config::{Config, EnclaveOpt, VSockProxyOpt};
 
 use crate::command::nitro_enclave::run_vsock_proxy;
 use crate::config::NitroSignOpt;
-use crossbeam_channel::bounded;
 use std::path::PathBuf;
+use std::sync::mpsc::channel;
 use structopt::StructOpt;
 use tmkms_light::utils::PubkeyDisplay;
 use tracing::Level;
@@ -159,7 +159,7 @@ fn run() -> Result<(), String> {
         }
         TmkmsLight::Enclave(CommandEnclave::RunEnclave { opt, v }) => {
             set_logger(v)?;
-            let (sender, receiver) = bounded(1);
+            let (sender, receiver) = channel();
             ctrlc::set_handler(move || {
                 let _ = sender.send(());
             })
@@ -171,7 +171,7 @@ fn run() -> Result<(), String> {
         }
         TmkmsLight::Enclave(CommandEnclave::RunProxy { opt, v }) => {
             set_logger(v)?;
-            let (sender, receiver) = bounded(1);
+            let (sender, receiver) = channel();
             ctrlc::set_handler(move || {
                 let _ = sender.send(());
             })

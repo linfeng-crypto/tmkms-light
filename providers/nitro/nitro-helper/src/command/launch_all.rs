@@ -2,7 +2,7 @@ use crate::command::nitro_enclave::run_vsock_proxy;
 use crate::command::nitro_enclave::{describe_enclave, run_enclave};
 use crate::command::start;
 use crate::config::Config;
-use crossbeam_channel::{bounded, Receiver, Sender};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{self, sleep};
 use std::time::Duration;
 
@@ -112,8 +112,8 @@ impl Drop for Launcher {
 
 pub fn launch_all(config: Config) -> Result<(), String> {
     // run enclave
-    let (sender1, receiver1) = bounded(1);
-    let (sender2, receiver2) = bounded(1);
+    let (sender1, receiver1) = channel();
+    let (sender2, receiver2) = channel();
     let launcher = Launcher::new(config, sender1, sender2);
     launcher.run(receiver1, receiver2)?;
     Ok(())

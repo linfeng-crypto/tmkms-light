@@ -4,10 +4,10 @@
 use crate::command::check_vsock_proxy;
 use crate::config::{EnclaveOpt, VSockProxyOpt};
 use crate::enclave_log_server::LogServer;
-use crossbeam_channel::Receiver;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::process::{Command, Output};
+use std::sync::mpsc::Receiver;
 
 /// The information provided by a `describe-enclaves` request.
 #[derive(Clone, Serialize, Deserialize)]
