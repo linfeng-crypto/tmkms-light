@@ -9,10 +9,10 @@ mod state;
 use command::launch_all::launch_all;
 use command::nitro_enclave::{describe_enclave, run_enclave, stop_enclave};
 use command::{check_vsock_proxy, init, start};
-use config::{Config, EnclaveOpt, VSockProxyOpt};
+use config::{EnclaveOpt, VSockProxyOpt};
 
 use crate::command::nitro_enclave::run_vsock_proxy;
-use crate::config::NitroSignOpt;
+use crate::config::{EnclaveConfig, NitroSignOpt};
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use structopt::StructOpt;
@@ -67,8 +67,9 @@ enum CommandHelper {
     #[structopt(name = "init", about = "Create config + keygen")]
     /// Create config + keygen
     Init {
-        #[structopt(short, default_value = "tmkms.toml")]
-        config_path: PathBuf,
+        /// the directory put the generated config files
+        #[structopt(short, default_value = "./")]
+        config_dir: PathBuf,
         #[structopt(short)]
         pubkey_display: Option<PubkeyDisplay>,
         #[structopt(short)]
@@ -94,9 +95,12 @@ enum CommandHelper {
     },
     #[structopt(name = "launch-all", about = "launch all")]
     LaunchAll {
-        /// config path
-        #[structopt(short, default_value = "tmkms.launch_all.toml")]
-        config_path: PathBuf,
+        /// tmkms config path
+        #[structopt(short, default_value = "tmkms.toml")]
+        tmkms_config: PathBuf,
+        /// enclave config path
+        #[structopt(short, default_value = "enclave.toml")]
+        enclave_config: PathBuf,
         #[structopt(short, parse(from_occurrences))]
         /// log level, default: info, -v: info, -vv: debug, -vvv: trace
         #[structopt(short, parse(from_occurrences))]
@@ -120,7 +124,7 @@ fn run() -> Result<(), String> {
     let opt = TmkmsLight::from_args();
     match opt {
         TmkmsLight::Helper(CommandHelper::Init {
-            config_path,
+            config_dir,
             pubkey_display,
             bech32_prefix,
             aws_region,
@@ -128,7 +132,7 @@ fn run() -> Result<(), String> {
             cid,
         }) => {
             init(
-                config_path,
+                config_dir,
                 pubkey_display,
                 bech32_prefix,
                 aws_region,
@@ -142,10 +146,7 @@ fn run() -> Result<(), String> {
             v,
         }) => {
             set_logger(v)?;
-            let toml_string = std::fs::read_to_string(config_path)
-                .map_err(|e| format!("toml config file failed to read: {:?}", e))?;
-            let config: NitroSignOpt = toml::from_str(&toml_string)
-                .map_err(|e| format!("toml config file failed to parse: {:?}", e))?;
+            let config = NitroSignOpt::from_file(config_path)?;
             if !check_vsock_proxy() {
                 return Err("vsock proxy not started".to_string());
             }
@@ -178,10 +179,15 @@ fn run() -> Result<(), String> {
             .map_err(|_| "Error to set Ctrl-C channel".to_string())?;
             run_vsock_proxy(&opt, receiver)?;
         }
-        TmkmsLight::Helper(CommandHelper::LaunchAll { config_path, v }) => {
+        TmkmsLight::Helper(CommandHelper::LaunchAll {
+            tmkms_config,
+            enclave_config,
+            v,
+        }) => {
             set_logger(v)?;
-            let config = Config::from_file(config_path)?;
-            launch_all(config)?;
+            let tmkms_config = NitroSignOpt::from_file(tmkms_config)?;
+            let enclave_config = EnclaveConfig::from_file(enclave_config)?;
+            launch_all(tmkms_config, enclave_config)?;
         }
     };
     Ok(())

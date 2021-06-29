@@ -8,27 +8,27 @@ use tmkms_light::utils::write_u16_payload;
 use tmkms_light::utils::{print_pubkey, PubkeyDisplay};
 use vsock::SockAddr;
 
-use crate::config::{Config, EnclaveOpt, NitroSignOpt, VSockProxyOpt};
+use crate::config::{EnclaveConfig, EnclaveOpt, NitroSignOpt, VSockProxyOpt};
 use crate::key_utils::{credential, generate_key};
 use crate::proxy::Proxy;
 use crate::shared::{NitroConfig, NitroRequest};
 use crate::state::StateSyncer;
 
-/// write tmkms.toml + tmkms.launch_all.toml + generate keys
+/// write tmkms.toml + enclave.toml + generate keys
+/// config_dir: the directory that put the generated config file
 pub fn init(
-    config_path: PathBuf,
+    config_dir: PathBuf,
     pubkey_display: Option<PubkeyDisplay>,
     bech32_prefix: Option<String>,
     aws_region: String,
     kms_key_id: String,
     cid: Option<u32>,
 ) -> Result<(), String> {
-    let file_stem = config_path
-        .file_stem()
-        .map(|s| s.to_str().unwrap_or("tmkms"))
-        .unwrap_or("tmkms");
-    let file_name_launch_all = format!("{}.launch_all.toml", file_stem);
-    let cp_launch_all = config_path.with_file_name(file_name_launch_all);
+    if !config_dir.is_dir() || !config_dir.exists() {
+        return Err("config path is not a directory or not exists".to_string());
+    }
+    let cp_helper = config_dir.join("tmkms.toml");
+    let cp_enclave = config_dir.join("enclave.toml");
 
     let nitro_sign_opt = NitroSignOpt {
         aws_region: aws_region.clone(),
@@ -39,19 +39,18 @@ pub fn init(
         remote_addr: format!("kms.{}.amazonaws.com", aws_region),
         ..Default::default()
     };
-    let all_config = Config {
-        sign_opt: nitro_sign_opt,
+    let enclave_config = EnclaveConfig {
         enclave: enclave_opt,
         vsock_proxy: proxy_opt,
     };
-    let t = toml::to_string_pretty(&all_config.sign_opt)
+    let t = toml::to_string_pretty(&nitro_sign_opt)
         .map_err(|e| format!("failed to create a config in toml: {:?}", e))?;
-    let t_launch_all = toml::to_string(&all_config)
+    let t_enclave_config = toml::to_string(&enclave_config)
         .map_err(|e| format!("failed to create a config in toml: {:?}", e))?;
-    fs::write(config_path, t).map_err(|e| format!("failed to write a config: {:?}", e))?;
-    fs::write(cp_launch_all, t_launch_all)
-        .map_err(|e| format!("failed to write a luanch all config: {:?}", e))?;
-    let config = all_config.sign_opt;
+    fs::write(cp_helper, t).map_err(|e| format!("failed to write a config: {:?}", e))?;
+    fs::write(cp_enclave, t_enclave_config)
+        .map_err(|e| format!("failed to write a launch all config: {:?}", e))?;
+    let config = nitro_sign_opt;
     let (cid, port) = if let Some(cid) = cid {
         (cid, config.enclave_config_port)
     } else {

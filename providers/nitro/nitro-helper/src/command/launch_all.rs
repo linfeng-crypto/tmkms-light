@@ -1,13 +1,14 @@
 use crate::command::nitro_enclave::run_vsock_proxy;
 use crate::command::nitro_enclave::{describe_enclave, run_enclave};
 use crate::command::start;
-use crate::config::Config;
+use crate::config::{EnclaveConfig, NitroSignOpt};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{self, sleep};
 use std::time::Duration;
 
 pub struct Launcher {
-    config: Config,
+    tmkms_config: NitroSignOpt,
+    enclave_config: EnclaveConfig,
     stop_enclave_sender: Sender<()>,
     stop_vsock_proxy_sender: Sender<()>,
 }
@@ -16,12 +17,14 @@ impl Launcher {
     /// create a new launcher, stop_enclave_sender: before the launcher exit, send the signal to
     /// the subprocess so that it can stop gracefully.
     pub fn new(
-        config: Config,
+        tmkms_config: NitroSignOpt,
+        enclave_config: EnclaveConfig,
         stop_enclave_sender: Sender<()>,
         stop_vsock_proxy_sender: Sender<()>,
     ) -> Self {
         Self {
-            config,
+            tmkms_config,
+            enclave_config,
             stop_enclave_sender,
             stop_vsock_proxy_sender,
         }
@@ -36,7 +39,7 @@ impl Launcher {
         stop_vsock_proxy_receiver: Receiver<()>,
     ) -> Result<(), String> {
         // start enclave
-        let enclave_config = self.config.enclave.clone();
+        let enclave_config = self.enclave_config.enclave.clone();
         let t1 = thread::spawn(move || {
             tracing::info!("starting enclave ...");
             if let Err(e) = run_enclave(&enclave_config, stop_enclave_receiver) {
@@ -46,7 +49,7 @@ impl Launcher {
         });
 
         // launch proxy
-        let proxy_config = self.config.vsock_proxy.clone();
+        let proxy_config = self.enclave_config.vsock_proxy.clone();
         let stop_enclave_sender = self.stop_enclave_sender.clone();
         let t2 = thread::spawn(move || {
             tracing::info!("starting vsock proxy");
@@ -78,9 +81,9 @@ impl Launcher {
 
         let stop_enclave_sender = self.stop_enclave_sender.clone();
         let stop_vsock_proxy_sender = self.stop_vsock_proxy_sender.clone();
-        let sign_config = self.config.sign_opt.clone();
+        let tmkms_config = self.tmkms_config.clone();
         let _t3 = thread::spawn(move || {
-            if let Err(e) = start(&sign_config, Some(cid as u32)) {
+            if let Err(e) = start(&tmkms_config, Some(cid as u32)) {
                 tracing::error!("{}", e);
                 tracing::debug!("send close enclave signal");
                 let _ = stop_enclave_sender.send(());
@@ -110,11 +113,11 @@ impl Drop for Launcher {
     }
 }
 
-pub fn launch_all(config: Config) -> Result<(), String> {
+pub fn launch_all(tmkms_config: NitroSignOpt, enclave_config: EnclaveConfig) -> Result<(), String> {
     // run enclave
     let (sender1, receiver1) = channel();
     let (sender2, receiver2) = channel();
-    let launcher = Launcher::new(config, sender1, sender2);
+    let launcher = Launcher::new(tmkms_config, enclave_config, sender1, sender2);
     launcher.run(receiver1, receiver2)?;
     Ok(())
 }

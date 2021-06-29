@@ -35,6 +35,15 @@ pub struct NitroSignOpt {
     pub aws_region: String,
 }
 
+impl NitroSignOpt {
+    pub fn from_file(config_path: PathBuf) -> Result<Self, String> {
+        let toml_string = std::fs::read_to_string(config_path)
+            .map_err(|e| format!("toml config file failed to read: {:?}", e))?;
+        toml::from_str(&toml_string)
+            .map_err(|e| format!("toml config file failed to parse: {:?}", e))
+    }
+}
+
 #[derive(StructOpt, Clone, Serialize, Deserialize, Debug)]
 pub struct VSockProxyOpt {
     /// "Set the maximum number of simultaneous connections supported."
@@ -126,14 +135,14 @@ impl Default for NitroSignOpt {
     }
 }
 
+/// the config to run the enclave and vsock proxy
 #[derive(Serialize, Deserialize, Default, Debug)]
-pub struct Config {
-    pub sign_opt: NitroSignOpt,
+pub struct EnclaveConfig {
     pub vsock_proxy: VSockProxyOpt,
     pub enclave: EnclaveOpt,
 }
 
-impl Config {
+impl EnclaveConfig {
     pub fn from_file(config_path: PathBuf) -> Result<Self, String> {
         if !config_path.exists() {
             return Err("config path is not exists".to_string());
