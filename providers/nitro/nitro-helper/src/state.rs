@@ -1,7 +1,7 @@
 use crate::shared::VSOCK_HOST_CID;
 use anomaly::{fail, format_err};
 use std::os::unix::io::AsRawFd;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, TryRecvError};
 use std::thread;
 use std::{
     fs,
@@ -132,9 +132,12 @@ impl StateSyncer {
                                     {
                                         warn!("state persistence failed: {}", e);
                                     }
-                                    if let Ok(()) = stop_recv.try_recv() {
-                                        warn!("stop state persistence");
-                                        return;
+                                    match stop_recv.try_recv() {
+                                        Ok(()) | Err(TryRecvError::Disconnected) => {
+                                            warn!("stop state persistence");
+                                            return;
+                                        }
+                                        Err(TryRecvError::Empty) => continue,
                                     }
                                 }
                             }

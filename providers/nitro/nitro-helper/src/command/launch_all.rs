@@ -45,7 +45,10 @@ impl Launcher {
             if let Err(e) = run_enclave(&enclave_config, rx1) {
                 tracing::error!("enclave error: {:?}", e);
                 for tx in stop_senders {
-                    let _ = tx.send(());
+                    if let Err(e) = tx.send(()) {
+                        tracing::error!("send stop signal error: {:?}", e);
+                        std::process::exit(1);
+                    }
                 }
             }
         });
@@ -59,7 +62,10 @@ impl Launcher {
             if let Err(e) = run_vsock_proxy(&proxy_config, rx2) {
                 tracing::error!("vsock proxy error: {:?}", e);
                 for tx in stop_senders {
-                    let _ = tx.send(());
+                    if let Err(e) = tx.send(()) {
+                        tracing::error!("send stop signal error: {:?}", e);
+                        std::process::exit(1);
+                    }
                 }
             }
         });
@@ -73,41 +79,58 @@ impl Launcher {
         let cid = loop {
             let enclave_info = describe_enclave()?;
             if enclave_info.is_empty() {
-                tracing::error!("can't find running enclave");
+                tracing::warn!("can't find running enclave");
             } else {
-                break enclave_info[0].enclave_cid;
+                tracing::info!("find running enclave");
+                break Some(enclave_info[0].enclave_cid as u32);
             }
             t += 1;
             if t >= timeout {
-                return Err("can't find running enclave".to_string());
+                tracing::error!("can't find running enclave or start enclave timeout");
+                for tx in self.stop_senders.iter() {
+                    if let Err(e) = tx.send(()) {
+                        tracing::error!("send stop signal error: {:?}", e);
+                        std::process::exit(1);
+                    }
+                }
+                break None;
             }
             sleep(Duration::from_secs(1));
         };
 
-        let tmkms_config = self.tmkms_config.clone();
-        let stop_senders = self.stop_senders.clone();
-        let t3 = thread::spawn(move || {
-            if let Err(e) = start(&tmkms_config, Some(cid as u32), rx3) {
-                tracing::error!("{}", e);
-                for tx in stop_senders {
-                    let _ = tx.send(());
+        if cid.is_some() {
+            let tmkms_config = self.tmkms_config.clone();
+            let stop_senders = self.stop_senders.clone();
+            let t3 = thread::spawn(move || {
+                if let Err(e) = start(&tmkms_config, cid, rx3) {
+                    tracing::error!("{}", e);
+                    for tx in stop_senders {
+                        if let Err(e) = tx.send(()) {
+                            tracing::error!("send stop signal error: {:?}", e);
+                            std::process::exit(1);
+                        }
+                    }
                 }
-            }
-        });
-        threads.push(t3);
+            });
+            threads.push(t3);
+        }
 
         // when get the ctrlc signal, send stop signal
         let stop_senders = self.stop_senders.clone();
         ctrlc::set_handler(move || {
             tracing::debug!("get Ctrl-C signal, send close enclave signal");
             for tx in stop_senders.iter() {
-                let _ = tx.send(());
+                if let Err(e) = tx.send(()) {
+                    tracing::error!("send stop signal error: {:?}", e);
+                }
             }
         })
         .map_err(|_| "Error to set Ctrl-C channel".to_string())?;
 
         for t in threads.into_iter() {
-            let _ = t.join();
+            if let Err(e) = t.join() {
+                tracing::error!("join thread error: {:?}", e);
+            }
         }
         Ok(())
     }

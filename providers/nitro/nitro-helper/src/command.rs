@@ -193,6 +193,6 @@ pub fn start(
     state_syncer
         .launch_syncer(stop_sync_rx)
         .join()
-        .expect("state syncing");
+        .map_err(|_| "join thread error".to_string())?;
     Ok(())
 }
