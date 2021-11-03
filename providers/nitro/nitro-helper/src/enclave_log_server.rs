@@ -22,7 +22,7 @@ pub struct LogServer {
 
 impl LogServer {
     pub fn new(local_port: u32, to_console: bool, log_file: PathBuf) -> std::io::Result<Self> {
-        let file = if log_file.file_name().is_none() {
+        let file = if log_file.file_name().is_some() {
             let f = OpenOptions::new()
                 .write(true)
                 .append(true)
@@ -93,6 +93,7 @@ impl LogServer {
         let log = Log::from_raw(raw_log).map_err(|e| format!("{:?}", e))?;
         let mut s = log.format();
         if self.to_console {
+            println!("ccccccccccccccccccccccc log to console");
             match log.level {
                 Level::TRACE => trace!("{}", s),
                 Level::DEBUG => debug!("{}", s),
@@ -103,6 +104,7 @@ impl LogServer {
         }
 
         if let Some(file) = self.log_file.as_mut() {
+            println!("fffffffffffffff get file log");
             let now = Local::now();
             s = format!("{} {:<6}{}\n", now.format("%F %T%.3f"), log.level, s);
             file.write_all(s.as_bytes())
